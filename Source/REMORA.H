@@ -567,6 +567,12 @@ public:
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> vec_Akv;
     /** \brief Vertical diffusion coefficient (3D) */
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> vec_Akt;
+    /** \brief Numerical destruction of salinity and temperature variance at cell centers,
+     *         (A{c^2} - A{c}^2)/dt with A the advection step (remora.do_dvd) */
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> vec_dvd_num;
+    /** \brief Physical destruction of salinity and temperature variance by vertical
+     *         diffusion, 2 Akt (dc/dz)^2, at w points (remora.do_dvd) */
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> vec_dvd_phy;
     /** \brief Harmonic viscosity defined on the psi points (corners of horizontal grid cells) */
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> vec_visc2_p;
     /** \brief Harmonic viscosity defined on the rho points (centers) */
@@ -1817,6 +1823,34 @@ public:
      */
     int num_passive_scalars () const noexcept { return nscalar; }
 
+    /** \brief Number of cons components that are model state: ncons without the copies
+     *         the discrete variance decay diagnostic carries. Checkpoints hold these. */
+    int num_state_cons () const noexcept { return do_dvd ? DVD_comp : ncons; }
+
+    /** \brief Whether cons component icomp is one of the discrete variance decay copies */
+    bool is_dvd_copy (int icomp) const noexcept { return do_dvd && icomp >= DVD_comp; }
+
+    /** \brief Set the variance decay copies to salinity, temperature and their squares, at
+     *         both time levels and in every ghost cell */
+    void dvd_reset_copies (int lev);
+
+    /** \brief Compute the numerical and physical variance destruction of the step just taken */
+    void dvd_compute (int lev, amrex::Real dt_lev);
+
+    /** \brief Volume integrals of the variance decay budget, for sum_integrated_quantities */
+    amrex::Vector<amrex::Real> dvd_integrals ();
+
+    /** \brief An output field of the discrete variance decay diagnostic */
+    struct DVDOutputVar {
+        std::string name;       ///< name in history files and plotfiles
+        int comp;               ///< component of vec_dvd_num or vec_dvd_phy
+        bool at_w;              ///< true: vec_dvd_phy, at w points; false: vec_dvd_num
+        std::string long_name;
+        std::string units;
+    };
+    /** \brief The output fields of the discrete variance decay diagnostic, in output order */
+    static const amrex::Vector<DVDOutputVar>& dvd_output_vars ();
+
 
 #ifdef REMORA_USE_NETCDF
     static int total_nc_plot_file_step;
@@ -2146,8 +2180,13 @@ private:
     /** \brief First cons component of the biology block, i.e. Tracer_comp + nscalar.
      *         The state is laid out as temp, salt, the passive scalars, then biology. */
     int Bio_comp = Tracer_comp;
+    /** \brief Whether to compute the discrete variance decay diagnostic (remora.do_dvd) */
+    bool do_dvd = false;
+    /** \brief First cons component of the variance decay copies, Bio_comp + nbio. The copies
+     *         come last so that every other component keeps its index. */
+    int DVD_comp = Tracer_comp;
     /** \brief Number of conserved scalars in the state
-     *         (temperature + salt + passive scalars + biology tracers) */
+     *         (temperature + salt + passive scalars + biology tracers + variance decay copies) */
     int ncons = Tracer_comp + 1;
     /** \brief Selected ecosystem, owning its parameters and host-side kernels. */
     std::unique_ptr<REMORABiology::Biology> m_biology = REMORABiology::make_biology("none");

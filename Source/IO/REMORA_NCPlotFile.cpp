@@ -805,6 +805,24 @@ void REMORA::WriteNCPlotFile_which(int lev, MultiFab const* plotMF,
         ncf.var("v").put_attr("coordinates","x_v y_v s_rho ocean_time");
         ncf.var("v").put_attr("field","v-velocity, scalar, series");
 
+        // Discrete variance decay (remora.do_dvd): numerical destruction at rho points,
+        // physical destruction by vertical diffusion at w points
+        if (do_dvd) {
+            for (const auto& v : dvd_output_vars()) {
+                const bool at_w = v.at_w;
+                ncf.def_var_fill(v.name, ncutils::NCDType::Real,
+                                 { nt_name, at_w ? nz_w_name : nz_r_name, ny_r_name, nx_r_name },
+                                 &netcdf_fill_value);
+                ncf.var(v.name).put_attr("long_name", v.long_name);
+                ncf.var(v.name).put_attr("units", v.units);
+                ncf.var(v.name).put_attr("time","ocean_time");
+                ncf.var(v.name).put_attr("grid","grid");
+                ncf.var(v.name).put_attr("location", at_w ? "face" : "volume");
+                ncf.var(v.name).put_attr("coordinates",
+                                         at_w ? "x_rho y_rho s_w ocean_time" : "x_rho y_rho s_rho ocean_time");
+                ncf.var(v.name).put_attr("field", v.name + ", scalar, series");
+            }
+        }
         ncf.def_var_fill("ubar", ncutils::NCDType::Real, { nt_name, ny_u_name, nx_u_name }, &netcdf_fill_value);
         ncf.var("ubar").put_attr("long_name","vertically integrated u-momentum component");
         ncf.var("ubar").put_attr("units","meter second-1");
@@ -1595,6 +1613,21 @@ void REMORA::WriteNCPlotFile_which(int lev, MultiFab const* plotMF,
             // **************************************************************************
 
             // **************************************************************************
+            if (do_dvd) {
+                for (const auto& v : dvd_output_vars()) {
+                    Box tmp_bx_v(tmp_bx);
+                    if (v.at_w) { tmp_bx_v.surroundingNodes(2); }
+                    const long long local_nzv = tmp_bx_v.length()[2];
+                    const MultiFab& src = v.at_w ? *vec_dvd_phy[lev] : *vec_dvd_num[lev];
+                    FArrayBox tmp;
+                    tmp.resize(tmp_bx_v, 1, amrex::The_Pinned_Arena());
+                    tmp.template copy<RunOn::Device>(src[mfi.index()], v.comp, 0, 1);
+                    Gpu::streamSynchronize();
+                    auto nc_dvd = collector.var(ncf, v.name);
+                    nc_dvd.put(tmp.dataPtr(), { local_start_nt, local_start_z, local_start_y, local_start_x },
+                                              { local_nt, local_nzv, local_ny, local_nx });
+                }
+            }
             { // Vorticity
                 int comp = -1;
                 for (int i = 0; i < plot_var_names_3d.size(); i++) {

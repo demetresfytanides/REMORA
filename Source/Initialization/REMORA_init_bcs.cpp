@@ -47,8 +47,9 @@ void REMORA::init_bcs ()
     };
 
     // Every tracer takes an inflow value; Tracer_comp starts the tracers past salt, not the tracers.
+    // The variance decay copies take none: an inflow face is rejected for them below.
     auto uses_tracer_input = [this] (int bcvar_type) noexcept {
-        return bcvar_type >= BCVars::cons_bc && bcvar_type < BCVars::cons_bc + ncons;
+        return bcvar_type >= BCVars::cons_bc && bcvar_type < BCVars::cons_bc + num_state_cons();
     };
 
     // prefix_is_side: pp is prefixed by a side (remora.bc.xlo), not a variable (remora.bc.temp),
@@ -331,7 +332,11 @@ void REMORA::init_bcs ()
         f_by_var("temp", BCVars::Temp_bc_comp);
         f_by_var("salt", BCVars::Salt_bc_comp);
         for (int icomp = Tracer_comp; icomp < ncons; ++icomp) {
-            f_by_var(cons_names[icomp], icomp, "scalar");
+            // A variance decay copy takes the condition of the tracer it copies
+            const bool copies_salt = is_dvd_copy(icomp) &&
+                (icomp - DVD_comp == DVD::salt || icomp - DVD_comp == DVD::salt_sq);
+            f_by_var(cons_names[icomp], icomp,
+                     !is_dvd_copy(icomp) ? "scalar" : (copies_salt ? "salt" : "temp"));
         }
         f_by_var("u", xvel_bc_idx);
         f_by_var("v", yvel_bc_idx);
@@ -345,6 +350,20 @@ void REMORA::init_bcs ()
     // Always specify z direction by side keyword
     f_by_side("zlo", Orientation(Direction::z,Orientation::low));
     f_by_side("zhi", Orientation(Direction::z,Orientation::high));
+
+    // A squared copy has no boundary value to read or to take from the inputs: its value
+    // on an inflow or data-driven face would be the square of the tracer's, which no file
+    // or option carries. Faces that take their value from the interior are fine.
+    for (int icomp = DVD_comp; icomp < ncons && do_dvd; ++icomp) {
+        for (OrientationIter oit; oit; ++oit) {
+            const Orientation ori = oit();
+            if (phys_bc_type[icomp][ori] == REMORA_BC::inflow ||
+                phys_bc_need_data[bdy_index[icomp]][ori]) {
+                amrex::Abort("remora.do_dvd does not support inflow or file-driven (clamped,"
+                             " orlanski_rad_nudg) boundaries for temperature or salinity");
+            }
+        }
+    }
 
     // *****************************************************************************
     //

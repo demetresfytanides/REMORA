@@ -609,6 +609,30 @@ REMORA::WritePlotFile (int istep_for_plot)
             mf_comp++;
         }
 
+        // Variance decay: the w-point physical destruction is averaged to cell centers here;
+        // the NetCDF history keeps it on its w points
+        if (do_dvd) {
+            for (const auto& v : dvd_output_vars()) {
+                if (!containerHasElement(plot_var_names_3d, v.name)) { continue; }
+                const MultiFab& src = v.at_w ? *vec_dvd_phy[lev] : *vec_dvd_num[lev];
+                const int comp = v.comp;
+                const bool at_w = v.at_w;
+                MultiFab dmf(plotMF[lev], make_alias, mf_comp, 1);
+#ifdef _OPENMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+                for (MFIter mfi(dmf, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                    const Box& bx = mfi.tilebox();
+                    const Array4<Real      > dst = dmf.array(mfi);
+                    const Array4<Real const> d   = src.const_array(mfi, comp);
+                    ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                        dst(i,j,k) = at_w ? myhalf * (d(i,j,k) + d(i,j,k+1)) : d(i,j,k);
+                    });
+                }
+                mf_comp++;
+            }
+        }
+
 #ifdef REMORA_USE_PARTICLES
         const auto& particles_namelist( particleData.getNames() );
         for (ParticlesNamesVector::size_type i = 0; i < particles_namelist.size(); i++) {

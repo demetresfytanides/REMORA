@@ -27,6 +27,19 @@
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 int akt_comp (int icomp) noexcept { return (icomp < NAT) ? icomp : Salt_comp; }
 
+/**
+ * \brief Components of the discrete variance decay diagnostic (remora.do_dvd).
+ *
+ * The copies are the last ncopies cons components when the diagnostic is on: salinity,
+ * salinity squared, temperature and temperature squared, reset from the model state at
+ * the start of every step. The diagnostic MultiFabs vec_dvd_num and vec_dvd_phy hold one
+ * component per tracer, salinity first.
+ */
+namespace DVD {
+    enum { salt = 0, salt_sq, temp, temp_sq, ncopies };
+    enum { diag_salt = 0, diag_temp, ndiag };
+}
+
 #define NGROW          2
 
 /**

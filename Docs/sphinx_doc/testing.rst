@@ -149,6 +149,12 @@ say the baseline was right, and it cannot notice a feature that has silently sto
     ``above`` bound is a control: it asserts the case drifts without the correction under test, so its
     ``below`` partner cannot pass because the case has stopped exercising anything.
 
+``add_test_dvd_budget``
+    Assert the discrete variance decay budget with ``check_dvd_budget.sh``: in every step, the loss of
+    salinity and temperature variance in the integrated-quantity log equals dt times the integrated
+    numerical destruction, to a tolerance relative to the variance. ``holds`` also requires some step to
+    lose well above the tolerance; ``fails`` is the control, for a run in which diffusion also acts.
+
 ``add_test_log``
     The run must succeed **and** its log must contain the given substring. For a code path whose answers
     are not worth a gold file but which must keep reaching a behavior it reports, or for a diagnostic that

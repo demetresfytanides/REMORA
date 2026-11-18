@@ -355,6 +355,33 @@ function(add_test_conservation TEST_NAME INPUT_NAME TEST_EXE OPTIONS)
     )
 endfunction(add_test_conservation)
 
+# Assert the discrete variance decay budget of check_dvd_budget.sh: every step's loss of tracer
+# variance equals dt times the volume integral of the numerical destruction it reports. MODE is
+# holds, or fails for a control run in which diffusion also destroys variance.
+function(add_test_dvd_budget TEST_NAME INPUT_NAME TEST_EXE OPTIONS DT TOLERANCE MODE)
+
+    setup_test(${INPUT_NAME})
+
+    resolve_test_exe("${TEST_DIR}" "${TEST_EXE}" TEST_EXE)
+
+    # The sums are printed with 17 digits: the budget is a difference of two variances
+    set(SUM_OPTS "remora.v=1 remora.sum_interval=1 remora.sum_precision=17 remora.data_log=cons.log")
+
+    # INPUT_NAME may be composed (compose_test_input), which writes it to its own directory
+    set(INPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/test_files/${INPUT_NAME}/${INPUT_NAME}.i)
+    set(test_command sh -c "rm -f cons.log && ${MPI_COMMANDS} ${TEST_EXE} ${INPUT_FILE} ${SUM_OPTS} ${OPTIONS} > ${TEST_NAME}.log 2>&1 && ${CMAKE_CURRENT_SOURCE_DIR}/check_dvd_budget.sh cons.log ${DT} ${TOLERANCE} ${MODE}")
+
+    add_test(${TEST_NAME} ${test_command})
+    set_tests_properties(${TEST_NAME}
+        PROPERTIES
+        TIMEOUT 600
+        PROCESSORS ${NP}
+        WORKING_DIRECTORY "${CURRENT_TEST_BINARY_DIR}/"
+        LABELS "regression"
+        ATTACHED_FILES_ON_FAIL "${CURRENT_TEST_BINARY_DIR}/${TEST_NAME}.log"
+    )
+endfunction(add_test_dvd_budget)
+
 # Run INPUT_NAME's inputs with OPTIONS and pass if the run exits cleanly: for
 # self-checking modes that abort on an inconsistency, so no gold file is needed.
 function(add_test_run TEST_NAME INPUT_NAME TEST_EXE OPTIONS)
@@ -572,6 +599,20 @@ add_test_layout(Seamount_ECB_tiled Seamount_ECB_tiled "remora_exec" "plt00003" "
     "remora.omp_tile_size=1024000 1024000 1024000" "remora.omp_tile_size=2 3 1024000")
 add_test_r(Channel_Test                 "remora_exec" "plt00010")
 add_test_r(DoubleGyre                   "remora_exec" "plt00010")
+
+# Discrete variance decay (remora.do_dvd). The budget: with advection alone, each step's loss of
+# salinity and temperature variance is dt times the integrated numerical destruction, to
+# rounding (1e-12 of the variance; the losses are about 1e-10 of it). It fails if the copies are
+# not reset every step. The control keeps the vertical diffusion, which the copies do not see.
+compose_test_input(DVD_budget DoubleGyre)
+add_test_dvd_budget(DVD_budget DVD_budget "remora_exec" "" 3600 1e-12 holds)
+add_test_dvd_budget(DVD_budget_control DVD_budget "remora_exec" "remora.Akt_bak=1.0" 3600 1e-12 fails)
+compose_test_input(DVD_state_unchanged DoubleGyre)
+add_test_r_selfcompare(DVD_state_unchanged "remora_exec" "plt00010" "remora.do_dvd=false" "remora.do_dvd=true")
+compose_test_input(DVD_restart DoubleGyre)
+add_test_restart_exact(DVD_restart "remora_exec" "plt00010" "chk00005")
+compose_test_input(DVD_inflow_abort DoubleGyre)
+add_test_abort(DVD_inflow_abort "remora_exec" "remora.do_dvd does not support inflow")
 # Walls on all sides, one box against six, with the 2D velocities not exchanged after their
 # boundary conditions on the fast steps (remora.cf_set_2d_bcs = 0): the barotropic fluxes
 # on the box edges along a wall must still come out the same in every layout

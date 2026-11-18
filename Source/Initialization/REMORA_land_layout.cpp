@@ -498,7 +498,7 @@ REMORA::level0_fields (bool all)
                     &vec_DU_avg2, &vec_DV_avg1, &vec_DV_avg2, &vec_Dubar_old, &vec_Dubar_new,
                     &vec_Dvbar_old, &vec_Dvbar_new, &vec_rubar, &vec_rvbar, &vec_rzeta,
                     &vec_sstore, &vec_rhoS, &vec_rhoA, &vec_bvf, &vec_tke, &vec_gls,
-                    &vec_Lscale, &vec_Akk, &vec_Akp}) {
+                    &vec_Lscale, &vec_Akk, &vec_Akp, &vec_dvd_num, &vec_dvd_phy}) {
         if (lev < v->size()) { add_if(f, (*v)[lev]); }
     }
     for (auto* v : {&vec_sustr_rho, &vec_svstr_rho}) {

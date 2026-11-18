@@ -63,8 +63,10 @@ REMORA::WriteCheckpointFile ()
        // write the number of components
        // for each variable we store
 
-       // conservative, cell-centered vars
-       HeaderFile << ncons << "\n";
+       // conservative, cell-centered vars. The variance decay copies are left out: they are
+       // reset from the state at the start of every step.
+       const int nstate = num_state_cons();
+       HeaderFile << nstate << "\n";
 
        // x-velocity on faces
        HeaderFile << 1 << "\n";
@@ -132,9 +134,9 @@ REMORA::WriteCheckpointFile ()
        // The cell-centered components in order. The count above cannot tell
        // apart layouts of the same size, such as different dye counts or
        // biology models, and the data are stored by position.
-       HeaderFile << "cons_names " << cons_names.size();
-       for (const auto& name : cons_names) {
-           HeaderFile << " " << name;
+       HeaderFile << "cons_names " << nstate;
+       for (int n = 0; n < nstate; ++n) {
+           HeaderFile << " " << cons_names[n];
        }
        HeaderFile << "\n";
 
@@ -163,11 +165,12 @@ REMORA::WriteCheckpointFile ()
        }
        BoxArray ba2d(std::move(bl2d));
 
-       MultiFab cons(grids[lev],dmap[lev],ncons,cons_new[lev]->nGrowVect());
-       MultiFab::Copy(cons,*cons_new[lev],0,0,ncons,cons_new[lev]->nGrowVect());
+       const int nstate = num_state_cons();
+       MultiFab cons(grids[lev],dmap[lev],nstate,cons_new[lev]->nGrowVect());
+       MultiFab::Copy(cons,*cons_new[lev],0,0,nstate,cons_new[lev]->nGrowVect());
        VisMF::Write(cons, amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", "Cell"));
 
-       MultiFab::Copy(cons,*cons_old[lev],0,0,ncons,cons_old[lev]->nGrowVect());
+       MultiFab::Copy(cons,*cons_old[lev],0,0,nstate,cons_old[lev]->nGrowVect());
        VisMF::Write(cons, amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", "Cell_old"));
 
        MultiFab xvel(convert(grids[lev],IntVect(1,0,0)),dmap[lev],1,xvel_new[lev]->nGrowVect());
@@ -256,6 +259,13 @@ REMORA::WriteCheckpointFile ()
        VisMF::Write(*(vec_Akv[lev]), amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", "Akv"));
        VisMF::Write(*(vec_Akt[lev]), amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", "Akt"));
 
+       // The variance decay of the last step, so that a history record at the restart time
+       // holds it as the uninterrupted run's does
+       if (do_dvd) {
+           VisMF::Write(*vec_dvd_num[lev], amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", "dvd_num"));
+           VisMF::Write(*vec_dvd_phy[lev], amrex::MultiFabFileFullPrefix(lev, checkpointname, "Level_", "dvd_phy"));
+       }
+
        // The end-of-step snapshots a subcycled finer level interpolates between (see
        // roll_2d_snapshot and store_2d_flux). Each step rolls the previous step's into the
        // start of its own, so a restart needs them to take its first step as an
@@ -334,12 +344,12 @@ REMORA::ReadCheckpointFile ()
     // conservative, cell-centered vars
     is >> chk_ncomp;
     GotoNextLine(is);
-    if (chk_ncomp != ncons) {
+    if (chk_ncomp != num_state_cons()) {
         // The tracer count comes from remora.nscalar or, when a biology model is
         // active, from that model's tracer list, so name both rather than only the
         // input a biology run never sets.
         amrex::Abort("Checkpoint holds " + std::to_string(chk_ncomp) +
-                     " cell-centered components but this run has " + std::to_string(ncons) +
+                     " cell-centered components but this run has " + std::to_string(num_state_cons()) +
                      ". The count is set by remora.nscalar and by remora.biology_model; "
                      "both must match the run the checkpoint came from.");
     }
@@ -462,10 +472,12 @@ REMORA::ReadCheckpointFile ()
             Vector<std::string> chk_names;
             std::string name;
             while (lis >> name) { chk_names.push_back(name); }
-            if (count != static_cast<int>(chk_names.size()) || chk_names != cons_names) {
+            const Vector<std::string> state_names(cons_names.begin(),
+                                                  cons_names.begin() + num_state_cons());
+            if (count != static_cast<int>(chk_names.size()) || chk_names != state_names) {
                 std::string have, want;
                 for (const auto& n : chk_names) { have += " " + n; }
-                for (const auto& n : cons_names) { want += " " + n; }
+                for (const auto& n : state_names) { want += " " + n; }
                 amrex::Abort("Checkpoint cell-centered components differ from this run."
                              "\n  checkpoint:" + have + "\n  this run:  " + want +
                              "\nThe layout is set by remora.nscalar and"
@@ -532,12 +544,13 @@ REMORA::ReadCheckpointFile ()
         }
         BoxArray ba2d(std::move(bl2d));
 
-        MultiFab cons(grids[lev],dmap[lev],ncons,cons_new[lev]->nGrowVect());
+        const int nstate = num_state_cons();
+        MultiFab cons(grids[lev],dmap[lev],nstate,cons_new[lev]->nGrowVect());
         VisMF::Read(cons, amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell"));
-        MultiFab::Copy(*cons_new[lev],cons,0,0,ncons,cons_new[lev]->nGrowVect());
+        MultiFab::Copy(*cons_new[lev],cons,0,0,nstate,cons_new[lev]->nGrowVect());
 
         VisMF::Read(cons, amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Cell_old"));
-        MultiFab::Copy(*cons_old[lev],cons,0,0,ncons,cons_old[lev]->nGrowVect());
+        MultiFab::Copy(*cons_old[lev],cons,0,0,nstate,cons_old[lev]->nGrowVect());
 
         MultiFab xvel(convert(grids[lev],IntVect(1,0,0)),dmap[lev],1,xvel_new[lev]->nGrowVect());
         VisMF::Read(xvel, amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "XFace"));
@@ -631,6 +644,16 @@ REMORA::ReadCheckpointFile ()
        VisMF::Read(*(vec_Akp[lev]), amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Akp"));
        VisMF::Read(*(vec_Akt[lev]), amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Akt"));
        VisMF::Read(*(vec_Akv[lev]), amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "Akv"));
+
+       // A checkpoint written without remora.do_dvd has no variance decay: it stays zero
+       // until the first step
+       if (do_dvd) {
+           const std::string dvd_num = amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "dvd_num");
+           if (VisMF::Exist(dvd_num)) {
+               VisMF::Read(*vec_dvd_num[lev], dvd_num);
+               VisMF::Read(*vec_dvd_phy[lev], amrex::MultiFabFileFullPrefix(lev, restart_chkfile, "Level_", "dvd_phy"));
+           }
+       }
 
        // The subcycling snapshots (see WriteCheckpointFile). A checkpoint written before they
        // were saved, or at a level that had not taken a step, leaves them as a fresh level

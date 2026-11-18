@@ -349,6 +349,10 @@ REMORA::setup_step (int lev, Real time, Real dt_lev)
 
     set_zeta_to_Ztavg(lev);
 
+    if (do_dvd) {
+        dvd_reset_copies(lev);
+    }
+
     // prestep computes W over whole columns of every valid cell and the first ghost ring,
     // so only the ghost cells need a value here
     MultiFab mf_W(convert(ba,IntVect(0,0,1)),dm,1,IntVect(NGROW+1,NGROW+1,0));
@@ -472,7 +476,8 @@ REMORA::setup_step (int lev, Real time, Real dt_lev)
 
         t3dmix2(bx, s_arr, s_arr_rhs, diff2_arr, Hz, z_r, pm, pn, metu, metv, msku, mskv, dt_lev, ncomp, N);
 
-        for (int itrac = Tracer_comp; itrac < ncons; ++itrac) {
+        // The variance decay copies are advected only, so they skip the diffusion
+        for (int itrac = Tracer_comp; itrac < num_state_cons(); ++itrac) {
             Array4<Real> const& diff2_arr_scalar = vec_diff2[lev]->array(mfi,itrac);
             t3dmix2(bx, S_new.array(mfi,itrac), S_old.array(mfi,itrac), diff2_arr_scalar, Hz, z_r, pm, pn, metu, metv, msku, mskv, dt_lev, 1, N);
         }

@@ -459,7 +459,8 @@ REMORA::advance_3d (int lev, MultiFab& mf_cons,
 
         Box bx = mfi.tilebox();
 
-        for (int i_comp=0; i_comp < ncons; i_comp++) {
+        // The variance decay copies are advected only, so they skip the vertical diffusion
+        for (int i_comp=0; i_comp < num_state_cons(); i_comp++) {
             vert_visc_3d(bx,0,0,mf_cons.array(mfi,i_comp),Hz,
                          mf_Akt->const_array(mfi,akt_comp(i_comp)),nnew,N,dt_lev);
         }
@@ -491,4 +492,8 @@ REMORA::advance_3d (int lev, MultiFab& mf_cons,
         }
     }
 #endif
+
+    if (do_dvd) {
+        dvd_compute(lev, dt_lev);
+    }
 }

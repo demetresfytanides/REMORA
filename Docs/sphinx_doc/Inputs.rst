@@ -1319,6 +1319,14 @@ List of Parameters
 |                                          |                                        |                        |                |
 |                                          | tracers.                               |                        |                |
 +------------------------------------------+----------------------------------------+------------------------+----------------+
+| **remora.do_dvd**                        | Compute the discrete variance decay    | true or false          | false          |
+|                                          |                                        |                        |                |
+|                                          | of salinity and temperature: their     |                        |                |
+|                                          |                                        |                        |                |
+|                                          | numerical and physical destruction of  |                        |                |
+|                                          |                                        |                        |                |
+|                                          | variance (see :ref:`sec:dvd`)          |                        |                |
++------------------------------------------+----------------------------------------+------------------------+----------------+
 | **remora.tnu2_scalar**                   | Constant horizontal diffusivity,       | Real number            | 0.0            |
 |                                          |                                        |                        |                |
 |                                          | everywhere for passive scalar.         |                        |                |
@@ -1422,6 +1430,11 @@ files.
 
 Dye and biology coexist freely, so ``remora.nscalar = 2`` with a Fennel model carrying
 11 tracers gives 15 components in the order shown above. See :ref:`sec:Biology`.
+
+``remora.do_dvd = true`` adds four internal components after all of these: the copies of
+salinity, temperature and their squares that the discrete variance decay diagnostic advects
+(``dvd_salt``, ``dvd_salt_sq``, ``dvd_temp``, ``dvd_temp_sq``; see :ref:`sec:dvd`). They are
+not model state: checkpoints and the integrated-quantity log leave them out.
 
 With ``remora.ic_type = netcdf`` each dye's initial field is read from the initial
 file under its own name -- ``tracer``, ``tracer_1``, and so on -- stored with the

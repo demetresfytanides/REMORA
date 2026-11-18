@@ -30,8 +30,9 @@ REMORA::sum_integrated_quantities(Real time)
     bool local = true;
 
     // One sum per cell-centered tracer past salinity: the passive scalars and the
-    // biology tracers. Empty when the run carries neither.
-    const int n_tracers = ncons - Tracer_comp;
+    // biology tracers. Empty when the run carries neither. The variance decay copies
+    // are not model state and are left out.
+    const int n_tracers = num_state_cons() - Tracer_comp;
 
     Vector<Real> tracer_ml(n_tracers, zero);
     Real kineng_ml = zero;
@@ -85,6 +86,12 @@ REMORA::sum_integrated_quantities(Real time)
         volume_ml += volWgtSumMF(lev,ones_mf       ,             0,local,true);
         max_vel_ml = std::max(max_vel_ml, max_vel_local);
     }
+
+    // With remora.do_dvd: the variance of salinity and temperature about their volume means
+    // and the volume integrals of their numerical variance destruction, over the hierarchy.
+    // Without diffusion, sources or open boundaries, the variance a step loses is dt times
+    // the destruction it reports.
+    const Vector<Real> dvd_sums = do_dvd ? dvd_integrals() : Vector<Real>();
 
     if (verbose > 0) {
         // Layout: every tracer's single-level sum, then kineng/volume, then the same
@@ -162,6 +169,13 @@ REMORA::sum_integrated_quantities(Real time)
                                               << std::setw(datwidth) << std::setprecision(datprecision) << max_vel_ml << '\n';
             }
 
+            const char* dvd_labels[] = {"salt_var", "temp_var", "dvd_num_salt", "dvd_num_temp"};
+            for (int n = 0; n < static_cast<int>(dvd_sums.size()); ++n) {
+                amrex::Print() << std::setw(namewidth) << std::left << dvd_labels[n] << std::right
+                               << " = " << std::setw(datwidth) << std::setprecision(datprecision)
+                               << dvd_sums[n] << '\n';
+            }
+
             if (NumDataLogs() > 0) {
                 std::ostream& data_log1 = DataLog(0);
                 if (data_log1.good()) {
@@ -173,6 +187,9 @@ REMORA::sum_integrated_quantities(Real time)
                         data_log1 << std::setw(datwidth) << "kineng";
                         data_log1 << std::setw(datwidth) << "volume";
                         data_log1 << std::setw(datwidth) << "max_vel";
+                        for (int n = 0; n < static_cast<int>(dvd_sums.size()); ++n) {
+                            data_log1 << std::setw(datwidth) << dvd_labels[n];
+                        }
                         data_log1 << std::endl;
                     }
 
@@ -188,6 +205,9 @@ REMORA::sum_integrated_quantities(Real time)
                             << volume_ml;
                   data_log1 << std::setw(datwidth) << std::setprecision(datprecision)
                             << max_vel_ml;
+                  for (Real v : dvd_sums) {
+                      data_log1 << std::setw(datwidth) << std::setprecision(datprecision) << v;
+                  }
                   data_log1 << std::endl;
               }
             }
@@ -196,6 +216,76 @@ REMORA::sum_integrated_quantities(Real time)
         });
 #endif
     }
+}
+
+/**
+ * Volume integrals for the discrete variance decay budget, over the whole hierarchy:
+ * int (S - Sm)^2 dV, int (T - Tm)^2 dV, int dvd_num_salt dV and int dvd_num_temp dV, with Sm
+ * and Tm the volume means. Subtracting the mean first keeps the variance from cancelling
+ * against the much larger int S^2 dV. Land cells are left out. Every rank gets the result.
+ *
+ * @return  the four integrals, in that order
+ */
+Vector<Real>
+REMORA::dvd_integrals ()
+{
+    BL_PROFILE("REMORA::dvd_integrals()");
+    Real vol = zero, sum_s = zero, sum_t = zero;
+    for (int lev = 0; lev <= finest_level; ++lev) {
+        MultiFab wet(grids[lev], dmap[lev], 1, 0);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+        for (MFIter mfi(wet, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const Array4<Real> w = wet.array(mfi);
+            const Array4<Real const> mskr = vec_mskr[lev]->const_array(mfi);
+            ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
+            {
+                w(i,j,k) = mskr(i,j,0);
+            });
+        }
+        MultiFab ws(grids[lev], dmap[lev], 2, 0);
+        MultiFab::Copy(ws, *cons_new[lev], Salt_comp, 0, 1, 0);
+        MultiFab::Copy(ws, *cons_new[lev], Temp_comp, 1, 1, 0);
+        MultiFab::Multiply(ws, wet, 0, 0, 1, 0);
+        MultiFab::Multiply(ws, wet, 0, 1, 1, 0);
+        vol   += volWgtSumMF(lev, wet, 0, true, true);
+        sum_s += volWgtSumMF(lev, ws, 0, true, true);
+        sum_t += volWgtSumMF(lev, ws, 1, true, true);
+    }
+    // Summed over this rank's boxes above, over every rank here: volWgtSumMF with local = false
+    // would reduce twice, once in MultiFab::Dot and once more itself
+    Real sums[3] = {vol, sum_s, sum_t};
+    ParallelAllReduce::Sum(sums, 3, ParallelContext::CommunicatorSub());
+    vol = sums[0]; sum_s = sums[1]; sum_t = sums[2];
+    const Real mean_s = sum_s / vol;
+    const Real mean_t = sum_t / vol;
+
+    Vector<Real> out(4, zero);
+    for (int lev = 0; lev <= finest_level; ++lev) {
+        MultiFab var(grids[lev], dmap[lev], 2, 0);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+        for (MFIter mfi(var, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const Array4<Real> v = var.array(mfi);
+            const Array4<Real const> s = cons_new[lev]->const_array(mfi);
+            const Array4<Real const> mskr = vec_mskr[lev]->const_array(mfi);
+            ParallelFor(mfi.tilebox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
+            {
+                const Real ds = s(i,j,k,Salt_comp) - mean_s;
+                const Real dT = s(i,j,k,Temp_comp) - mean_t;
+                v(i,j,k,0) = mskr(i,j,0) * ds * ds;
+                v(i,j,k,1) = mskr(i,j,0) * dT * dT;
+            });
+        }
+        out[0] += volWgtSumMF(lev, var, 0, true, true);
+        out[1] += volWgtSumMF(lev, var, 1, true, true);
+        out[2] += volWgtSumMF(lev, *vec_dvd_num[lev], DVD::diag_salt, true, true);
+        out[3] += volWgtSumMF(lev, *vec_dvd_num[lev], DVD::diag_temp, true, true);
+    }
+    ParallelAllReduce::Sum(out.data(), int(out.size()), ParallelContext::CommunicatorSub());
+    return out;
 }
 
 /**

@@ -498,6 +498,42 @@ drivers in this case.
 
 .. _sec:ci-ndtfast-tests:
 
+Discrete variance decay tests
+-----------------------------
+
+These run ``DoubleGyre`` (closed by slip walls, temperature and salinity varying in all three
+directions) with ``remora.do_dvd`` on; see :ref:`sec:dvd`.
+
++---------------------------------------+------------------------------------------------------------+
+| Test                                  | What it asserts                                            |
++=======================================+============================================================+
+| DVD_budget                            | with no horizontal or vertical diffusion, the variance of  |
+|                                       |                                                            |
+|                                       | salinity and of temperature that each of the 10 steps      |
+|                                       |                                                            |
+|                                       | loses is dt times the volume integral of its numerical     |
+|                                       |                                                            |
+|                                       | destruction, to 1e-12 of the variance (measured: at most   |
+|                                       |                                                            |
+|                                       | 4e-14; the losses are about 1e-10 of it). It fails when    |
+|                                       |                                                            |
+|                                       | the copies are not reset every step.                       |
++---------------------------------------+------------------------------------------------------------+
+| DVD_budget_control                    | with the vertical diffusion on, the same budget fails:     |
+|                                       |                                                            |
+|                                       | the copies are advected only                               |
++---------------------------------------+------------------------------------------------------------+
+| DVD_state_unchanged                   | the run with the diagnostic on matches the run without it  |
++---------------------------------------+------------------------------------------------------------+
+| DVD_restart                           | a run restarted at step 5 writes the same variance decay   |
+|                                       |                                                            |
+|                                       | and state at step 10, bitwise, though its checkpoint holds |
+|                                       |                                                            |
+|                                       | no copies                                                  |
++---------------------------------------+------------------------------------------------------------+
+| DVD_inflow_abort                      | an inflow face for temperature and salinity is rejected    |
++---------------------------------------+------------------------------------------------------------+
+
 Barotropic substep count tests
 ------------------------------
 

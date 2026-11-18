@@ -139,6 +139,12 @@ List of Parameters
 |                                        |                                   |                       |            |
 |                                        | when using land/sea mask          |                       |            |
 +----------------------------------------+-----------------------------------+-----------------------+------------+
+| **remora.do_dvd**                      | compute the discrete variance     | false or true         | false      |
+|                                        |                                   |                       |            |
+|                                        | decay of salinity and temperature |                       |            |
+|                                        |                                   |                       |            |
+|                                        | (see :ref:`sec:dvd`)              |                       |            |
++----------------------------------------+-----------------------------------+-----------------------+------------+
 | **remora.netcdf_fill_value**           | fill value to use in NetCDF       | Real                  | 1.0e37     |
 |                                        |                                   |                       |            |
 |                                        | output to mask values             |                       |            |
@@ -223,6 +229,17 @@ Notes
 | **omega**                      | velocity across the             |
 |                                | terrain-following levels        |
 |                                | (ROMS ``omega``), m/s           |
++--------------------------------+---------------------------------+
+| **dvd_num_salt**,              | numerical destruction of        |
+| **dvd_num_temp**               | salinity and temperature        |
+|                                | variance, with                  |
+|                                | ``remora.do_dvd``               |
+|                                | (:ref:`sec:dvd`)                |
++--------------------------------+---------------------------------+
+| **dvd_phy_salt**,              | their destruction by vertical   |
+| **dvd_phy_temp**               | diffusion, with                 |
+|                                | ``remora.do_dvd``; averaged to  |
+|                                | cell centers here               |
 +--------------------------------+---------------------------------+
 
 In NetCDF files, ``x_velocity``, ``y_velocity``, and ``z_velocity`` are called ``u``, ``v``,

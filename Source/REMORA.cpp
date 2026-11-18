@@ -267,6 +267,13 @@ REMORA::init_scalar_metadata ()
         cons_names.emplace_back(name);
     }
 
+    // Internal copies of the variance decay diagnostic, in DVD:: order
+    if (do_dvd) {
+        for (const char* name : {"dvd_salt", "dvd_salt_sq", "dvd_temp", "dvd_temp_sq"}) {
+            cons_names.emplace_back(name);
+        }
+    }
+
     AMREX_ALWAYS_ASSERT(static_cast<int>(cons_names.size()) == ncons);
 }
 
@@ -2623,8 +2630,13 @@ REMORA::ReadParameters ()
     if (nscalar < 0) {
         amrex::Abort("remora.nscalar must be non-negative");
     }
+    // The discrete variance decay diagnostic carries its copies of salinity, temperature and
+    // their squares as the last cons components, so they are advected exactly as the model
+    // tracers are.
+    pp.queryAdd("do_dvd", do_dvd);
     Bio_comp = Tracer_comp + nscalar;
-    ncons = Tracer_comp + nscalar + nbio;
+    DVD_comp = Bio_comp + nbio;
+    ncons = DVD_comp + (do_dvd ? int(DVD::ncopies) : 0);
     init_scalar_metadata();
 
     // remora.nscalar counts dye only; biology tracers are added on top. Print

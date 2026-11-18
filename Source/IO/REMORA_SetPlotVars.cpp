@@ -54,7 +54,7 @@ REMORA::set3DPlotVariables (const std::string& pp_plot_var_names_3d)
         });
     if (expand_biology) {
         // Group aliases expand only the biology block, excluding passive dyes.
-        for (int icomp = Bio_comp; icomp < ncons; ++icomp) {
+        for (int icomp = Bio_comp; icomp < Bio_comp + nbio; ++icomp) {
             if (!containerHasElement(plot_var_names_3d, cons_names[icomp])) {
                 plot_var_names_3d.push_back(cons_names[icomp]);
             }
@@ -94,6 +94,16 @@ REMORA::set3DPlotVariables (const std::string& pp_plot_var_names_3d)
                tmp_plot_names.push_back(derived_names_3d[i]);
         } // if
     } // i
+
+    // AMReX plotfiles carry the variance decay fields at cell centers; the NetCDF history
+    // writes them whenever remora.do_dvd is on
+    if (do_dvd) {
+        for (const auto& v : dvd_output_vars()) {
+            if (containerHasElement(plot_var_names_3d, v.name)) {
+                tmp_plot_names.push_back(v.name);
+            }
+        }
+    }
 
 #ifdef REMORA_USE_PARTICLES
     const auto& particles_namelist( particleData.getNamesUnalloc() );

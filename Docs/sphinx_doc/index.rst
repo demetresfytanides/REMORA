@@ -58,6 +58,7 @@ In addition to this documentation, there is API documentation for REMORA generat
    theory/Variables.rst
    theory/Equations.rst
    theory/VerticalMixing.rst
+   DiscreteVarianceDecay.rst
 
 .. toctree::
    :caption: IMPLEMENTATION
