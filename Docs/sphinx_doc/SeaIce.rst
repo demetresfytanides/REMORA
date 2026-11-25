@@ -555,12 +555,6 @@ step.
 The default reproduces this so that such a run can be matched, and REMORA
 prints a warning at startup.
 
-.. warning::
-
-   For a thermodynamics-only run that is not being compared with ROMS, set
-   ``remora.ice.no_advect_two_states = false``. The ice then has one
-   state.
-
 Validation against ROMS
 =======================
 
