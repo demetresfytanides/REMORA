@@ -2619,10 +2619,13 @@ REMORA::ReadParameters ()
 #endif
         if (!sea_ice_params.advects() && sea_ice_params.no_advect_two_states &&
             ParallelDescriptor::IOProcessor()) {
-            amrex::Warning("Sea ice without advection: as in ROMS built without ICE_ADVECT, two"
-                           " copies of the ice state are advanced on alternate steps and each"
-                           " step's surface fluxes come from the other copy. Set"
-                           " remora.ice.no_advect_two_states = false for a single ice state.");
+            amrex::Warning("Sea ice without advection keeps two copies of the ice state, as ROMS"
+                           " does without ICE_ADVECT, so that such a run can be compared with ROMS."
+                           " Each copy is advanced only every other step, so the ice grows at about"
+                           " half the rate, and the heat flux into the ocean alternates from step to"
+                           " step. For a run that is not compared with ROMS, set"
+                           " remora.ice.no_advect_two_states = false: one ice state, advanced every"
+                           " step.");
         }
     }
 
