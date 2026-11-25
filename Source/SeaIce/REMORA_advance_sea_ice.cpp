@@ -2,6 +2,11 @@
 #include <REMORA_IceThermo.H>
 #include <REMORA_IceAdvect.H>
 #include <AMReX_FabArrayUtility.H>
+#include <AMReX_ParallelDescriptor.H>
+
+#include <sstream>
+#include <string>
+#include <vector>
 
 using namespace amrex;
 
@@ -20,6 +25,28 @@ host_probe_copy (const MultiFab& src)
     dtoh_memcpy(dst, src);
     Gpu::streamSynchronize();
     return dst;
+}
+
+/**
+ * \brief Print the probe lines of all ranks from the IO rank, and empty the buffer.
+ *
+ * Ranks that print on their own can split each other's lines. Collective.
+ */
+void
+print_probe_lines (std::ostringstream& lines)
+{
+    const std::string mine = lines.str();
+    lines.str("");
+    const int root = ParallelDescriptor::IOProcessorNumber();
+    const std::vector<int> counts = ParallelDescriptor::Gather(static_cast<int>(mine.size()), root);
+    std::vector<int> offsets(counts.size(), 0);
+    for (std::size_t n = 1; n < counts.size(); ++n) { offsets[n] = offsets[n-1] + counts[n-1]; }
+    std::vector<char> all(counts.empty() ? 1 : offsets.back() + counts.back() + 1);
+    ParallelDescriptor::Gatherv(mine.data(), static_cast<int>(mine.size()), all.data(),
+                                counts, offsets, root);
+    if (ParallelDescriptor::IOProcessor()) {
+        Print() << std::string(all.data(), all.size() - 1);
+    }
 }
 }
 
@@ -96,6 +123,8 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
     const bool l_probe = (p.probe_i >= 0 && p.probe_j >= 0 &&
                           (istep[lev] % p.probe_int == 0));
     MultiFab h_s, h_f, h_cons, h_su, h_sv, h_qi, h_qo, h_sn, h_rn, h_zr, h_zw;
+    std::ostringstream probe_lines;
+    probe_lines.precision(17);
     if (l_probe) {
         h_s    = host_probe_copy(*vec_ice_s_new[lev]);
         h_f    = host_probe_copy(*vec_ice_f[lev]);
@@ -158,7 +187,7 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
                                                      sv(pi,pj,0), sv(pi,pj+1,0));
             // Printed as two equal stress components whose utau is this one
             const Real s_eq = utau * utau / std::sqrt(Real(2.0));
-            amrex::AllPrint().SetPrecision(17)
+            probe_lines
                 << "ICEPROBE step " << istep[lev] << " cell (" << pi << "," << pj << ") IN "
                 << ca(pi,pj,N,Temp_comp) << " " << ca(pi,pj,N,Salt_comp) << " "
                 << s_eq << " " << s_eq << " "
@@ -250,6 +279,7 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
             stflx(i,j,0,Salt_comp) = c.stflx_salt;
         });
     }
+    if (l_probe) { print_probe_lines(probe_lines); }
 
     // ice_mk.h closes the thermodynamics with the lateral conditions
     for (int c : {REMORASeaIce::IceS::Aice, REMORASeaIce::IceS::Hice,
@@ -272,7 +302,7 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
             const auto sa = h_s.const_array(mfi);
             const auto fa = h_f.const_array(mfi);
             const int pi = p.probe_i, pj = p.probe_j;
-            amrex::AllPrint().SetPrecision(17)
+            probe_lines
                 << "ICEPROBE step " << istep[lev] << " cell (" << pi << "," << pj << ") OUT"
                 << " Aice " << sa(pi,pj,0,REMORASeaIce::IceS::Aice)
                 << " Hice " << sa(pi,pj,0,REMORASeaIce::IceS::Hice)
@@ -288,7 +318,7 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
             // something (it is identically zero without remora.ice.do_momentum).
             const auto uia = h_u.const_array(mfi);
             const auto via = h_v.const_array(mfi);
-            amrex::AllPrint().SetPrecision(17)
+            probe_lines
                 << "ICEVEL   step " << istep[lev] << " cell (" << pi << "," << pj << ")"
                 << " Uice " << uia(pi,pj,0)
                 << " Vice " << via(pi,pj,0)
@@ -326,7 +356,7 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
                 // at the ghost row on S/N; v the other way round.
                 const int ui_i = (k == 0) ? gi + 1 : gi;
                 const int vi_j = (k == 1) ? gj + 1 : gj;
-                amrex::AllPrint().SetPrecision(17)
+                probe_lines
                     << "ICEBC    step " << istep[lev] << " side " << tag[k]
                     << " cell (" << gi << "," << gj << ")"
                     << " Aice " << sa(gi,gj,0,REMORASeaIce::IceS::Aice)
@@ -339,6 +369,7 @@ REMORA::advance_sea_ice (int lev, Real time, Real dt_lev)
             }
         }
     }
+    if (l_probe) { print_probe_lines(probe_lines); }
 
     vec_ice_s_new[lev]->FillBoundary(geom[lev].periodicity());
     vec_ice_f[lev]->FillBoundary(geom[lev].periodicity());

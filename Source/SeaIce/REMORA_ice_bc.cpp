@@ -253,8 +253,8 @@ REMORA::ice_bc2d (int lev, int bc_var, MultiFab& S, const MultiFab& S_old,
                                                 : REMORASeaIce::IceSide::south)) { continue; }
                     const int ci = cx[sx], cj = cy[sy];
                     const int di = dx[sx], dj = dx[sy];
-                    Box one(IntVect(ci,cj,0), IntVect(ci,cj,0));
-                    ParallelFor(one, [=] AMREX_GPU_DEVICE (int i, int j, int)
+                    Box corner(IntVect(ci,cj,0), IntVect(ci,cj,0));
+                    ParallelFor(corner, [=] AMREX_GPU_DEVICE (int i, int j, int)
                     {
                         f_new(i,j,0,l_comp) = REMORASeaIce::ice_bc_corner(
                             i, j, di, dj, Array4<Real const>(f_new), l_comp);
@@ -382,8 +382,8 @@ REMORA::ice_tibc (int lev)
                                                 : REMORASeaIce::IceSide::south)) { continue; }
                     const int ci = cx[sx], cj = cy[sy];
                     const int di = dx[sx], dj = dx[sy];
-                    Box one(IntVect(ci,cj,0), IntVect(ci,cj,0));
-                    ParallelFor(one, [=] AMREX_GPU_DEVICE (int i, int j, int)
+                    Box corner(IntVect(ci,cj,0), IntVect(ci,cj,0));
+                    ParallelFor(corner, [=] AMREX_GPU_DEVICE (int i, int j, int)
                     {
                         Real e, tt;
                         REMORASeaIce::ice_tibc_corner(
@@ -557,8 +557,8 @@ REMORA::ice_velbc (int lev, MultiFab& mf_u_new, MultiFab& mf_v_new,
                                                 : REMORASeaIce::IceSide::south)) { continue; }
                     const int ci = cx[sx], cj = cy[sy];
                     const int di = dx[sx], dj = dx[sy];
-                    Box one(IntVect(ci,cj,0), IntVect(ci,cj,0));
-                    ParallelFor(one, [=] AMREX_GPU_DEVICE (int i, int j, int)
+                    Box corner(IntVect(ci,cj,0), IntVect(ci,cj,0));
+                    ParallelFor(corner, [=] AMREX_GPU_DEVICE (int i, int j, int)
                     {
                         vn(i,j,0) = REMORASeaIce::ice_bc_corner(
                             i, j, di, dj, Array4<Real const>(vn));
