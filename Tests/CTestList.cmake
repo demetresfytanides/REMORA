@@ -825,7 +825,7 @@ add_test_r_selfdiffer(SeaIce_mpdata        "remora_exec" "plt00100"
 compose_test_input(SeaIce_layout SeaIce_BC)
 add_test_layout(SeaIce_layout SeaIce_layout "remora_exec" "plt00100" "chk00100"
                 "remora.check_int=100 amr.max_grid_size=64"
-                "remora.check_int=100 amr.max_grid_size_x=13 amr.max_grid_size_y=4 amr.blocking_factor=1")
+                "remora.check_int=100 amr.max_grid_size_x=13 amr.max_grid_size_y=8 amr.blocking_factor=1")
 compose_test_input(SeaIce_layout_ns SeaIce_BC)
 add_test_layout(SeaIce_layout_ns SeaIce_layout_ns "remora_exec" "plt00100" "chk00100"
                 "remora.check_int=100 amr.max_grid_size=64"
